@@ -539,41 +539,41 @@ def sample_and_debug_trace(
     target_operator: str,
     events: list[dict[str, Any]],
     sample_rate: float = 0.1,
+    *,
+    group_key: str = "region",
+    batch_no: int | None = None,
 ) -> dict[str, Any]:
-    """数据采样后进行调试追踪。"""
-    sampler = None
-    for row in store.rows("data_sampler"):
-        if row.get("策略名称") == sampler_name:
-            sampler = row
-            break
-    sample_count = max(1, int(len(events) * sample_rate))
-    import random as _random
-    _random.seed(42)
-    sampled = _random.sample(events, min(sample_count, len(events)))
-    trace = {
-        "id": max(
-            (int(r.get("id", 0)) for r in store.rows("debug_trace")), default=0
-        ) + 1,
-        "会话名称": f"trace_{target_operator}_{int(time.time())}",
-        "目标算子": target_operator,
-        "采样数据": str(sampled[0].get("event_id", "")) if sampled else "",
-        "中间结果": str(len(sampled)),
-        "异常标记": "none",
-        "开始时间": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "结束时间": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "status": "运行中",
-        "pending": True,
-        "abnormal": False,
-        "_sampled_events": sampled,
-        "_sample_rate": sample_rate,
-    }
-    store.rows("debug_trace").append(trace)
+    """数据采样后进行调试追踪（全量分层口径）。
+
+    沿采样调用链入口完成：分层采样批次（样本携带分层总数与入选概率）→
+    调试会话冻结权重 → 加权异常观察。传入相同 batch_no 的重复调用只落一次
+    采样批次和一条调试会话（幂等）。
+    """
+    from app.services.debug_trace import DebugTraceService
+    from app.services.stratified_sample import StratifiedSampleService
+
+    sampler_service = StratifiedSampleService()
+    trace_service = DebugTraceService()
+
+    batch = sampler_service.record_stratified_batch(
+        sampler_name, events, batch_no=batch_no,
+        group_key=group_key, ratio=sample_rate,
+    )
+    effective_batch_no = batch["批次号"]
+    session_name = f"trace_{target_operator}_batch{effective_batch_no}"
+    started = trace_service.start_session(session_name, target_operator, effective_batch_no)
+    trace_service.record_observations(session_name)
+    session = started["session"]
     return {
-        "trace_id": trace["id"],
+        "trace_id": session["id"],
+        "session_name": session_name,
+        "batch_no": effective_batch_no,
         "target": target_operator,
-        "sampled_count": len(sampled),
+        "sampled_count": len(batch.get("_sampled_events", [])),
         "total_events": len(events),
         "sample_rate": sample_rate,
+        "weight_version": session.get("_weight_version"),
+        "idempotent": started.get("idempotent", False),
     }
 
 

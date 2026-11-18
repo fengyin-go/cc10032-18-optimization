@@ -20,6 +20,7 @@ from app.services.metric_lineage import MetricLineageService
 from app.services.late_handler import LateHandlerService
 from app.services.task_topology import TaskTopologyService
 from app.services.data_sampler import DataSamplerService
+from app.services.stratified_sample import StratifiedSampleService
 from app.services.debug_trace import DebugTraceService
 from app.services.aggregate_sink import AggregateSinkService
 from app.services.stream_job import StreamJobService
@@ -45,6 +46,7 @@ SERVICES: dict[str, BaseModuleService] = {
     "late_handler": LateHandlerService(),
     "task_topology": TaskTopologyService(),
     "data_sampler": DataSamplerService(),
+    "stratified_sample": StratifiedSampleService(),
     "debug_trace": DebugTraceService(),
     "aggregate_sink": AggregateSinkService(),
     "stream_job": StreamJobService(),

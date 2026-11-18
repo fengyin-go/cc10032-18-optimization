@@ -89,6 +89,8 @@ class Store:
         self._channels: dict[str, DataChannelEvent] = {}
         # 失败恢复记录：recovery_id → FailureRecovery
         self._failures: dict[str, FailureRecovery] = {}
+        # 跨页面待办：序号18产出报告后，其他业务页面跟着生成待办（按业务键幂等）
+        self._todos: list[dict[str, Any]] = []
 
     # ---- 跨模块数据通道 ----
 
@@ -214,6 +216,47 @@ class Store:
             "escalated": escalated_count,
         }
 
+    # ---- 跨页面待办 ----
+
+    def add_todo(
+        self,
+        target_module: str,
+        biz_key: str,
+        title: str,
+        detail: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """登记跨页面待办。
+
+        同一 (target_module, biz_key) 只落一条记录：序号18报告重复生成时
+        其他页面不会反复出现待办，保证“其他页面跟着生成待办”的幂等语义。
+        """
+        for todo in self._todos:
+            if todo["target_module"] == target_module and todo["biz_key"] == biz_key:
+                return todo
+        todo = {
+            "id": max((int(item.get("id", 0)) for item in self._todos), default=0) + 1,
+            "target_module": target_module,
+            "biz_key": biz_key,
+            "title": title,
+            "detail": copy.deepcopy(detail or {}),
+            "done": False,
+            "created_at": time.time(),
+        }
+        self._todos.append(todo)
+        return todo
+
+    def list_todos(self, target_module: str | None = None) -> list[dict[str, Any]]:
+        if target_module is None:
+            return list(self._todos)
+        return [item for item in self._todos if item["target_module"] == target_module]
+
+    def resolve_todo(self, todo_id: int) -> dict[str, Any] | None:
+        for todo in self._todos:
+            if int(todo.get("id", 0)) == todo_id:
+                todo["done"] = True
+                return todo
+        return None
+
     # ---- 基础 CRUD ----
 
     def module_names(self) -> list[str]:
@@ -257,6 +300,10 @@ class Store:
             "modules": modules,
             "channel_stats": channel_stats,
             "failure_stats": failure_stats,
+            "todo_stats": {
+                "total": len(self._todos),
+                "open": sum(1 for item in self._todos if not item.get("done")),
+            },
         }
 
 

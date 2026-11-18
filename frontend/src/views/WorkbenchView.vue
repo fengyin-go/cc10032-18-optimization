@@ -28,6 +28,16 @@
       </span>
     </p>
 
+    <section v-if="moduleTodos.length" class="todo-banner" data-testid="module-todos">
+      <h4>序号18联动待办（分层采样报告生成）</h4>
+      <ul>
+        <li v-for="todo in moduleTodos" :key="todo.id">
+          {{ todo.title }}
+          <button class="link" type="button" @click="resolveTodo(todo.id)">标记处理</button>
+        </li>
+      </ul>
+    </section>
+
     <form class="filter-bar" @submit.prevent="reload">
       <label v-for="field in filterFields" :key="field" class="filter-item">
         <span>{{ field }}</span>
@@ -103,7 +113,8 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/backend-service'
-import type { EntryRow } from '@/data/types'
+import { listSamplingTodos, resolveSamplingTodo } from '@/api/sampling-debug'
+import type { EntryRow, TodoRow } from '@/data/types'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)
@@ -115,6 +126,7 @@ const filterFields = meta.fields.slice(0, 3)
 const showCreate = ref(false)
 const creating = ref(false)
 const createValues = ref<Record<string, string>>({})
+const moduleTodos = ref<TodoRow[]>([])
 const stats = computed(() => [
   { label: meta.metrics[0], value: total.value },
   { label: meta.metrics[1], value: rows.value.filter((row) => row.status === meta.statuses[1]).length },
@@ -187,5 +199,49 @@ async function reload() {
   }
 }
 
-onMounted(reload)
+async function loadModuleTodos() {
+  try {
+    const payload = await listSamplingTodos(meta.key)
+    moduleTodos.value = payload.items.filter((item) => !item.done)
+  } catch {
+    // 待办是增强信息，读取失败不影响主列表
+    moduleTodos.value = []
+  }
+}
+
+async function resolveTodo(todoId: number) {
+  try {
+    await resolveSamplingTodo(todoId)
+    await loadModuleTodos()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '待办处理失败'
+  }
+}
+
+onMounted(() => {
+  void reload()
+  void loadModuleTodos()
+})
 </script>
+
+<style scoped>
+.todo-banner {
+  background: #fff8eb;
+  border: 1px solid #f0c36d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.todo-banner h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.todo-banner ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.todo-banner li {
+  margin-bottom: 4px;
+}
+</style>

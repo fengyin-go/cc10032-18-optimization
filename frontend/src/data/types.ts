@@ -32,6 +32,16 @@ export type ActionResult = {
   message: string
 }
 
+export type TodoRow = {
+  id: number
+  target_module: string
+  biz_key: string
+  title: string
+  detail: Record<string, unknown>
+  done: boolean
+  created_at: number
+}
+
 export type OverviewResult = {
   cards: { label: string; value: number }[]
   modules: { name: string; created: number; pending: number; abnormal: number }[]
